@@ -11,10 +11,10 @@
 (ns net.cgrand.enlive-html
   "enlive-html is a selector-based transformation and extraction engine."
   (:refer-clojure :exclude [flatmap])
-  (:require [clojure.string :as str])
-  (:require [clojure.zip :as z])
-  (:require [net.cgrand.xml :as xml])
-  #?(:clj (:require [net.cgrand.enlive-html.io :as io])))
+  (:require [clojure.string :as str]
+            [clojure.zip :as z]
+            [net.cgrand.xml :as xml]
+            #?(:clj [net.cgrand.enlive-html.io :as io])))
 
 ;; EXAMPLES: see net.cgrand.enlive-html.examples
 

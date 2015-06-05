@@ -1,9 +1,9 @@
 (ns net.cgrand.enlive-html.io
   (:refer-clojure :exclude [flatmap])
-  (:require [net.cgrand.tagsoup :as tagsoup])
-  (:require [net.cgrand.xml :as xml])
-  (:require [clojure.string :as str])
-  (:require [clojure.zip :as z]))
+  (:require [net.cgrand.tagsoup :as tagsoup]
+            [net.cgrand.xml :as xml]
+            [clojure.string :as str]
+            [clojure.zip :as z]))
 
 (def ^{:dynamic true} *options* {:parser tagsoup/parser})
 
