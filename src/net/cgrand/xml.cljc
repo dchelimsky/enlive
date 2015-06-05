@@ -9,8 +9,8 @@
 (ns net.cgrand.xml
   (:require [clojure.zip :as z])
   #?(:clj (:import (org.xml.sax ContentHandler Attributes SAXException XMLReader)
-            (org.xml.sax.ext DefaultHandler2)
-            (javax.xml.parsers SAXParser SAXParserFactory))))
+                   (org.xml.sax.ext DefaultHandler2)
+                   (javax.xml.parsers SAXParser SAXParserFactory))))
 
 (defrecord Element [tag attrs content])
 

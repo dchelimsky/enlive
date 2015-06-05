@@ -11,7 +11,9 @@
 (ns net.cgrand.enlive-html
   "enlive-html is a selector-based transformation and extraction engine."
   (:refer-clojure :exclude [flatmap])
+  #?(:cljs (:require-macros [net.cgrand.enlive-html :refer [at]]))
   (:require [clojure.string :as str]
+            #?(:cljs [goog.string :as gstr])
             [clojure.zip :as z]
             [net.cgrand.xml :as xml]
             #?(:clj [net.cgrand.enlive-html.io :as io])))
@@ -38,12 +40,12 @@
 (defn- xml-str
  "Like clojure.core/str but escapes < > and &."
  [x]
-  (-> x str (.replace "&" "&amp;") (.replace "<" "&lt;") (.replace ">" "&gt;")))
+  (-> x str (str/replace "&" "&amp;") (str/replace "<" "&lt;") (str/replace ">" "&gt;")))
 
 (defn- attr-str
  "Like clojure.core/str but escapes < > & and \"."
  [x]
-  (-> x str (.replace "&" "&amp;") (.replace "<" "&lt;") (.replace ">" "&gt;") (.replace "\"" "&quot;")))
+  (-> x str (str/replace "&" "&amp;") (str/replace "<" "&lt;") (str/replace ">" "&gt;") (str/replace "\"" "&quot;")))
 
 (def self-closing-tags #{:area :base :basefont :br :hr :input :img :link :meta})
 
@@ -227,7 +229,7 @@
       (if (= :> kw)
         :>
         (let [[[first-letter :as tag-name] :as segments]
-                (.split (name kw) "(?=[#.])")
+                (str/split (name kw) #"(?=[#.])")
               classes (for [s segments :when (= \. (first s))] (subs s 1))
               preds (when (seq classes) (list (apply has-class classes)))
               preds (if (contains? #{nil \* \# \.} first-letter)
@@ -267,7 +269,7 @@
          r))))
 
 (defn- states [init chains-seq]
-  (fn [^Number n]
+  (fn #?(:clj [^Number n] :cljs [n])
     (loop [n n s (set init) [chains & etc] chains-seq]
       (cond
         (odd? n) (recur (bit-shift-right n 1) (into s chains) etc)
@@ -414,14 +416,15 @@
   (reduce (fn [nodes [s t]] (transform nodes s t))
     (as-nodes node-or-nodes) rules))
 
-(defmacro at [node-or-nodes & rules]
-  `(-> ~node-or-nodes as-nodes
-     ~@(for [[s t] (partition 2 rules)]
-         (if (= :lockstep s)
-           `(lockstep-transform
-              ~(into {} (for [[s t] t]
-                          [(if (static-selector? s) (cacheable s) s) t])))
-           `(transform ~(if (static-selector? s) (cacheable s) s) ~t)))))
+#?(:clj
+   (defmacro at [node-or-nodes & rules]
+     `(-> ~node-or-nodes as-nodes
+        ~@(for [[s t] (partition 2 rules)]
+            (if (= :lockstep s)
+              `(lockstep-transform
+                 ~(into {} (for [[s t] t]
+                             [(if (static-selector? s) (cacheable s) s) t])))
+              `(transform ~(if (static-selector? s) (cacheable s) s) ~t))))))
 
 (defn zip-select-nodes* [locs state]
   (letfn [(select1 [loc previous-state]
@@ -483,13 +486,15 @@
 
 
 ;; main macros
-(defmacro transformation
- ([] `identity)
- ([form] form)
- ([form & forms] `(fn [node#] (at node# ~form ~@forms))))
+#?(:clj
+   (defmacro transformation
+    ([] `identity)
+    ([form] form)
+    ([form & forms] `(fn [node#] (at node# ~form ~@forms)))))
 
-(defmacro lockstep-transformation
- [& forms] `(fn [node#] (at node# :lockstep ~(apply array-map forms))))
+#?(:clj
+   (defmacro lockstep-transformation
+    [& forms] `(fn [node#] (at node# :lockstep ~(apply array-map forms)))))
 
 (defn- pad-unless [pred value s]
   (if (pred (first s))
@@ -502,52 +507,57 @@
     forms))
 
 ;; note: options may be triggered by :options as the 1st arg
-(defmacro snippet* [nodes & body]
-  (let [nodesym (gensym "nodes")]
-    `(let [~nodesym (map annotate ~nodes)]
-       (fn ~@(for [[args & forms] (bodies body)]
-           `(~args
-              (doall (flatmap (transformation ~@forms) ~nodesym))))))))
+#?(:clj
+   (defmacro snippet* [nodes & body]
+     (let [nodesym (gensym "nodes")]
+       `(let [~nodesym (map annotate ~nodes)]
+          (fn ~@(for [[args & forms] (bodies body)]
+              `(~args
+                 (doall (flatmap (transformation ~@forms) ~nodesym)))))))))
 
-(defmacro snippet
- "A snippet is a function that returns a seq of nodes."
- [source selector args & forms]
-  (let [[options source selector args & forms]
-         (pad-unless map? {} (list* source selector args forms))]
-    `(let [opts# (merge (ns-options (find-ns '~(ns-name *ns*)))
-                   ~options)
-           source# ~source]
-       (register-resource! source#)
-       (snippet* (select (html-resource source# opts#) ~selector) ~args ~@forms))))
+#?(:clj
+   (defmacro snippet
+     "A snippet is a function that returns a seq of nodes."
+     [source selector args & forms]
+     (let [[options source selector args & forms]
+           (pad-unless map? {} (list* source selector args forms))]
+       `(let [opts# (merge (ns-options (find-ns '~(ns-name *ns*)))
+                      ~options)
+              source# ~source]
+          (register-resource! source#)
+          (snippet* (select (html-resource source# opts#) ~selector) ~args ~@forms)))))
 
-(defmacro template
- "A template returns a seq of string."
- ([source args & forms]
-   (let [[options source & body]
-           (pad-unless map? {} (list* source args forms))]
-     `(let [opts# (merge (ns-options (find-ns '~(ns-name *ns*)))
-                    ~options)
-            source# ~source]
-        (register-resource! source#)
-        (comp emit* (snippet* (html-resource source# opts#) ~@body))))))
+#?(:clj
+   (defmacro template
+    "A template returns a seq of string."
+    ([source args & forms]
+      (let [[options source & body]
+              (pad-unless map? {} (list* source args forms))]
+        `(let [opts# (merge (ns-options (find-ns '~(ns-name *ns*)))
+                       ~options)
+               source# ~source]
+           (register-resource! source#)
+           (comp emit* (snippet* (html-resource source# opts#) ~@body)))))))
 
-(defmacro defsnippet
- "Define a named snippet -- equivalent to (def name (snippet source selector args ...))."
- [name source selector args & forms]
- `(def ~name (snippet ~source ~selector ~args ~@forms)))
+#?(:clj
+   (defmacro defsnippet
+     "Define a named snippet -- equivalent to (def name (snippet source selector args ...))."
+     [name source selector args & forms]
+     `(def ~name (snippet ~source ~selector ~args ~@forms))))
 
-(defmacro deftemplate
- "Defines a template as a function that returns a seq of strings."
- [name source args & forms]
-  `(def ~name (template ~source ~args ~@forms)))
+#?(:clj
+   (defmacro deftemplate
+     "Defines a template as a function that returns a seq of strings."
+     [name source args & forms]
+     `(def ~name (template ~source ~args ~@forms))))
 
-(defmacro defsnippets
- [source & specs]
- (let [xml-sym (gensym "xml")]
-   `(let [~xml-sym (html-resource ~source)]
-      ~@(for [[name selector args & forms] specs]
-               `(def ~name (snippet ~xml-sym ~selector ~args ~@forms))))))
-
+#?(:clj
+   (defmacro defsnippets
+     [source & specs]
+     (let [xml-sym (gensym "xml")]
+       `(let [~xml-sym (html-resource ~source)]
+          ~@(for [[name selector args & forms] specs]
+              `(def ~name (snippet ~xml-sym ~selector ~args ~@forms)))))))
 
 ;; transformations
 
@@ -556,22 +566,25 @@
  [& values]
   #(assoc % :content (flatten-nodes-coll values)))
 
-(defmacro transform-content [& body]
- `(let [f# (transformation ~@body)]
-    (fn [elt#]
-      (assoc elt# :content (flatmap f# (:content elt#))))))
+#?(:clj
+   (defmacro transform-content [& body]
+    `(let [f# (transformation ~@body)]
+       (fn [elt#]
+         (assoc elt# :content (flatmap f# (:content elt#)))))))
 
-(defn html-snippet
- "Concatenate values as a string and then parse it with tagsoup.
-  html-snippet doesn't insert missing <html> or <body> tags."
- [& values]
-  (-> (apply str "<bogon>" values)
-    java.io.StringReader. html-resource first :content))
+#?(:clj
+   (defn html-snippet
+    "Concatenate values as a string and then parse it with tagsoup.
+     html-snippet doesn't insert missing <html> or <body> tags."
+    [& values]
+     (-> (apply str "<bogon>" values)
+       java.io.StringReader. html-resource first :content)))
 
-(defn html-content
- "Replaces the content of the element. Values are strings containing html code."
- [& values]
-  #(assoc % :content (apply html-snippet values)))
+#?(:clj
+   (defn html-content
+    "Replaces the content of the element. Values are strings containing html code."
+    [& values]
+     #(assoc % :content (apply html-snippet values))))
 
 (defn wrap
  ([tag] (wrap tag nil))
@@ -599,13 +612,23 @@
                                        [k (substitute-vars v)])))
           :else node)))))
 
+#?(:cljs
+   (defn escape-regex
+     "Return the given string escaped as a RegEx literal"
+     [s]
+     (.replace s #"([.*+?^=!:${}()|\[\]\/\\])" "\\$1")))
+
 (defn replace-words
   "Takes a map of words to replacement strings and replaces 
    all occurences. Does not recurse, you have to pair it with an appropriate
    selector."
  [words-to-replacements] 
   (replace-vars
-    (java.util.regex.Pattern/compile (str "\\b(" (str/join "|" (map #(java.util.regex.Pattern/quote %) (keys words-to-replacements))) ")\\b")) 
+    #?(:clj
+       (java.util.regex.Pattern/compile (str "\\b(" (str/join "|" (map #(java.util.regex.Pattern/quote %) (keys words-to-replacements))) ")\\b"))
+       :cljs
+       (js/RegExp. (str "\\b(" (str/join "|" (map escape-regex (keys words-to-replacements))) ")\\b"))
+       )
     words-to-replacements
     identity))
 
@@ -641,10 +664,11 @@
  [& fns]
   #(reduce (fn [nodes f] (flatmap f nodes)) (as-nodes %) fns))
 
-(defmacro clone-for
- [comprehension & forms]
-  `(fn [node#]
-     (flatten-nodes-coll (for ~comprehension ((transformation ~@forms) node#)))))
+#?(:clj
+   (defmacro clone-for
+    [comprehension & forms]
+     `(fn [node#]
+        (flatten-nodes-coll (for ~comprehension ((transformation ~@forms) node#))))))
 
 (defn append
  "Appends the values to the content of the selected element."
@@ -692,10 +716,11 @@
          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"]))
     node))
 
-(defmacro strict-mode
- "Adds xhtml-transitional DTD to switch browser in 'strict' mode."
- [& forms]
-  `(do-> (transformation ~@forms) strict-mode*))
+#?(:clj
+   (defmacro strict-mode
+     "Adds xhtml-transitional DTD to switch browser in 'strict' mode."
+     [& forms]
+     `(do-> (transformation ~@forms) strict-mode*)))
 
 ;; other predicates
 (defn attr?
@@ -718,14 +743,27 @@
  attr=
   (multi-attr-pred =))
 
-(defn- starts-with? [^String s ^String prefix]
-  (and s (.startsWith s prefix)))
+#?(:clj
+   (defn- starts-with? [^String s ^String prefix]
+     (and s (.startsWith s prefix)))
+   :cljs
+   (defn- starts-with? [s prefix]
+     (and s (gstr/startsWith s prefix))))
 
-(defn- ends-with? [^String s ^String suffix]
-  (and s (.endsWith s suffix)))
+#?(:clj
+   (defn- ends-with? [^String s ^String suffix]
+     (and s (.endsWith s suffix)))
+   :cljs
+   (defn- ends-with? [s suffix]
+     (and s (gstr/endsWith s suffix))))
 
-(defn- contains-substring? [^String s ^String substring]
-  (and s (<= 0 (.indexOf s substring))))
+#?(:clj
+   (defn- contains-substring? [^String s ^String substring]
+     (and s (<= 0 (.indexOf s substring))))
+   :cljs
+   (defn- contains-substring? [s substring]
+     (and s (gstr/contains s substring))))
+
 
 (def ^{:doc "Selector predicate, tests if the specified attributes start with the specified values. See CSS ^= ."}
  attr-starts
@@ -739,11 +777,11 @@
  attr-contains
   (multi-attr-pred contains-substring?))
 
-(defn- is-first-segment? [^String s ^String segment]
-  (and s
-    (.startsWith s segment)
+(defn- is-first-segment? [s segment]
+  (and
+    (starts-with? s segment)
     (or (= (count s) (count segment))
-        (= \- (.charAt s (count segment))))))
+        (= \- (nth s (count segment))))))
 
 (def ^{:doc "Selector predicate, tests if the specified attributes start with the specified values. See CSS |= ."}
  attr|=
@@ -864,7 +902,7 @@
 ;; screen-scraping utils
 (defn text
  "Returns the text value of a node."
- {:tag String}
+  #?(:clj {:tag String})
  [node]
   (cond
     (string? node) node
@@ -873,33 +911,34 @@
 
 (defn texts
  "Returns the text value of a nodes collection."
- {:tag String}
- [nodes]
+  #?(:clj {:tag String})
+  [nodes]
   (map text nodes))
 
-(defmacro let-select
- "For each node or fragment, performs a subselect and bind it to a local,
-  then evaluates body.
-  bindings is a vector of binding forms and selectors."
- [nodes-or-fragments bindings & body]
-  (let [node-or-fragment (gensym "node-or-fragment__")
-        bindings
-          (map (fn [f x] (f x))
-            (cycle [identity (fn [spec] `(select ~node-or-fragment ~spec))])
-            bindings)]
-    `(map (fn [~node-or-fragment]
-            (let [~@bindings]
-              ~@body)) ~nodes-or-fragments)))
+#?(:clj
+   (defmacro let-select
+    "For each node or fragment, performs a subselect and bind it to a local,
+     then evaluates body.
+     bindings is a vector of binding forms and selectors."
+    [nodes-or-fragments bindings & body]
+     (let [node-or-fragment (gensym "node-or-fragment__")
+           bindings
+             (map (fn [f x] (f x))
+               (cycle [identity (fn [spec] `(select ~node-or-fragment ~spec))])
+               bindings)]
+       `(map (fn [~node-or-fragment]
+               (let [~@bindings]
+                 ~@body)) ~nodes-or-fragments))))
 
  ;; repl-utils
 (defn sniptest* [nodes f]
   (apply str (emit* (flatmap f nodes))))
 
-(defmacro sniptest
- "A handy macro for experimenting at the repl"
- [source-string & forms]
-  `(sniptest* (html-snippet ~source-string) (transformation ~@forms)))
-
+#?(:clj
+   (defmacro sniptest
+     "A handy macro for experimenting at the repl"
+     [source-string & forms]
+     `(sniptest* (html-snippet ~source-string) (transformation ~@forms))))
 
 ;; hiccup-style inline fragments
 (defn- attr-map? [node-spec]
