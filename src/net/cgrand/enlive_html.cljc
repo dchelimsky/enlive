@@ -938,7 +938,7 @@
    (defmacro sniptest
      "A handy macro for experimenting at the repl"
      [source-string & forms]
-     `(sniptest* (html-snippet ~source-string) (transformation ~@forms))))
+     `(sniptest* (quote ~(html-snippet source-string)) (transformation ~@forms))))
 
 ;; hiccup-style inline fragments
 (defn- attr-map? [node-spec]
