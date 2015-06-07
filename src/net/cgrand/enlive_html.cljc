@@ -13,29 +13,103 @@
   (:refer-clojure :exclude [flatmap])
   #?(:cljs (:require-macros [net.cgrand.enlive-html :refer [at]]))
   (:require [clojure.string :as str]
-            #?(:cljs [goog.string :as gstr])
             [clojure.zip :as z]
-            [net.cgrand.xml :as xml]
-            #?(:clj [net.cgrand.enlive-html.io :as io])))
+            #?(:cljs [goog.string :as gstr])
+            [net.cgrand.parser :as p]
+            #?(:clj [net.cgrand.parser.sax :as sax])
+            #?(:clj [net.cgrand.parser.tagsoup :as tagsoup]
+               :cljs [net.cgrand.parser.dom :as domparser])))
 
 ;; EXAMPLES: see net.cgrand.enlive-html.examples
 
+(def ^{:dynamic true} *options* {:parser #?(:clj tagsoup/parser
+                                            :cljs domparser/parser)})
+
+(defmacro with-options [m & body]
+  `(binding [*options* (merge *options* ~m)]
+     ~@body))
+
 #?(:clj
-   ;; Expose functions in this NS for backwards compatibility
    (do
-     (def ^:dynamic *options* io/*options*)
-     (defmacro with-options [m & body]
-       `(binding [io/*options* (merge *options* ~m)]
-          ~@body))
-     (def ns-options io/ns-options)
-     (def set-ns-options! io/set-ns-options!)
-     (def alter-ns-options! io/alter-ns-options!)
-     (def set-ns-parser! io/set-ns-parser!)
-     (def xml-parser io/xml-parser)
-     (def get-resource io/get-resource)
-     (def register-resource! io/register-resource!)
-     (def html-resource io/html-resource)
-     (def xml-resource io/xml-resource)))
+
+     (defn ns-options
+       ([] (ns-options *ns*))
+       ([ns] (::options (meta ns) {})))
+
+     (defn set-ns-options!
+          "Sets the default options to use by all templates and snippets in the
+          declaring ns."
+          [options]
+          (alter-meta! *ns* assoc ::options options))
+
+     (defn alter-ns-options!
+          "Sets the default options to use by all templates and snippets in the
+           declaring ns."
+          [f & args]
+          (set-ns-options! (apply f (ns-options) args)))
+
+     (defn set-ns-parser!
+          "Sets the default parser to use by all templates and snippets in the
+           declaring ns."
+          [parser]
+          (alter-ns-options! assoc :parser parser))))
+
+(defmulti ^{:arglists '([resource loader])} get-resource
+ "Loads a resource, using the specified loader. Returns a seq of nodes."
+ (fn [res _] (type res)))
+
+;; By default, let the parser coerce to a type it can handle
+(defmethod get-resource :default
+  [resource loader]
+  (loader resource))
+
+;; Resource registration only happens in CLJ
+#?(:clj
+   (do
+     (defmulti register-resource! type)
+
+     (defmethod register-resource! java.io.File [^java.io.File file]
+       (register-resource! (.toURL file)))
+
+     (defmethod register-resource! java.net.URL
+       [^java.net.URL url]
+       (alter-meta! *ns* update-in [:net.cgrand.reload/deps] (fnil conj #{}) url))
+
+     (defmethod register-resource! String [path]
+       (register-resource! (.getResource (clojure.lang.RT/baseLoader) path)))
+
+     (defmethod register-resource! :default [_]
+       #_(do nothing))))
+
+(defn html-resource
+ "Loads an HTML resource, returns a seq of nodes."
+ ([resource]
+   (get-resource resource (:parser *options*)))
+ ([resource options]
+   (with-options options
+     (html-resource resource))))
+
+#?(:clj
+   (def xml-parser sax/parser))
+
+#?(:clj
+   (defn xml-resource
+    "Loads an XML resource, returns a seq of nodes (using the SAX parser)."
+    [resource]
+     (get-resource resource xml-parser)))
+
+(defmethod get-resource #?(:clj clojure.lang.IPersistentMap :cljs cljs.core.IMap)
+ [xml-data _]
+  (list xml-data))
+
+(defmethod get-resource #?(:clj clojure.lang.IPersistentCollection :cljs cljs.core.ICollection)
+ [nodes _]
+  (seq nodes))
+
+#?(:clj
+   (defmethod get-resource String
+     [path loader]
+     (-> (clojure.lang.RT/baseLoader) (.getResourceAsStream path) loader)))
 
 (defn- xml-str
  "Like clojure.core/str but escapes < > and &."
@@ -109,23 +183,23 @@
 
 (defn- emit [t node]
   (cond
-   (xml/tag? node) ((:emit (annotations node) emit-tag) node t)
-   (xml/comment? node) (emit-comment node t)
-   (xml/dtd? node) (emit-dtd node t)
+   (p/tag? node) ((:emit (annotations node) emit-tag) node t)
+   (p/comment? node) (emit-comment node t)
+   (p/dtd? node) (emit-dtd node t)
    :else (append! t (xml-str node))))
 
 (defn- mapknitv [f coll]
   (persistent! (reduce f (transient []) coll)))
 
 (defn emit* [node-or-nodes]
-  (seq (mapknitv emit (if (xml/tag? node-or-nodes) [node-or-nodes] node-or-nodes))))
+  (seq (mapknitv emit (if (p/tag? node-or-nodes) [node-or-nodes] node-or-nodes))))
 
 (defn annotate [node]
   (cond
-    (xml/tag? node)
+    (p/tag? node)
       (let [node (update-in node [:content] #(map annotate %))]
         (vary-meta node assoc ::annotations {:emit emit-tag}))
-    (xml/comment? node)
+    (p/comment? node)
       (vary-meta node assoc ::annotations {:emit emit-comment})
     :else node))
 
@@ -357,7 +431,7 @@
   (let [transformation (or transformation (constantly nil))
         transformations (constantly transformation)
         state (automaton selector)]
-    (mapknitv #(transform-loc (xml/xml-zip %2) state transformations %1)
+    (mapknitv #(transform-loc (p/element-zipper %2) state transformations %1)
       nodes)))
 
 (defn- transform-fragment-locs [locs from-state to-state transformation]
@@ -392,7 +466,7 @@
     nodes
     (let [[from-selector to-selector] (first selector)
           transformation (or transformation (constantly nil))]
-      (flatten-nodes-coll (transform-fragment-locs (map xml/xml-zip nodes)
+      (flatten-nodes-coll (transform-fragment-locs (map p/element-zipper nodes)
                  (automaton from-selector) (automaton to-selector)
                  transformation)))))
 
@@ -409,7 +483,7 @@
   (let [state (lockstep-automaton (keys transformations-map))
         transformations (vec (map #(or % (constantly nil))
                                (vals transformations-map)))]
-    (mapknitv #(transform-loc (xml/xml-zip %2) state transformations %1)
+    (mapknitv #(transform-loc (p/element-zipper %2) state transformations %1)
       nodes)))
 
 (defn at* [node-or-nodes rules]
@@ -435,7 +509,7 @@
 
 (defn select-nodes* [nodes selector]
   (let [state (automaton selector)]
-    (map z/node (zip-select-nodes* (map xml/xml-zip nodes) state))))
+    (map z/node (zip-select-nodes* (map p/element-zipper nodes) state))))
 
 (defn zip-select-fragments* [locs state-from state-to]
   (letfn [(select1 [locs previous-state-from previous-state-to]
@@ -467,7 +541,7 @@
         state-from (automaton selector-from)
         state-to (automaton selector-to)]
     (map #(map z/node %)
-      (zip-select-fragments* (map xml/xml-zip nodes) state-from state-to))))
+      (zip-select-fragments* (map p/element-zipper nodes) state-from state-to))))
 
 (defn select
  "Returns the seq of nodes or fragments matched by the specified selector."
@@ -607,7 +681,7 @@
       (fn [node]
         (cond
           (string? node) (substitute-vars node)
-          (xml/tag? node) (assoc node :attrs
+          (p/tag? node) (assoc node :attrs
                             (into {} (for [[k v] (:attrs node)]
                                        [k (substitute-vars v)])))
           :else node)))))
@@ -708,10 +782,10 @@
         dest-selector (apply combiner nodes))))))
 
 (defn strict-mode* [node]
-  (if (xml/tag? node)
+  (if (p/tag? node)
     (-> node
       (assoc-in [:attrs :xmlns] "http://www.w3.org/1999/xhtml")
-      (vary-meta assoc ::xml/dtd
+      (vary-meta assoc ::p/dtd
         ["html" "-//W3C//DTD XHTML 1.0 Transitional//EN"
          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"]))
     node))
@@ -793,8 +867,8 @@
 (defn- nth?
  [f a b]
   (if (zero? a)
-    #(= (-> (filter xml/tag? (f %)) count inc) b)
-    #(let [an+b (-> (filter xml/tag? (f %)) count inc)
+    #(= (-> (filter p/tag? (f %)) count inc) b)
+    #(let [an+b (-> (filter p/tag? (f %)) count inc)
            an (- an+b b)]
        (and (zero? (rem an a)) (<= 0 (quot an a))))))
 
@@ -866,7 +940,7 @@
   matched by the specified selector-step."
  [selector-step]
   (let [selector [:> selector-step]]
-    #(when-let [sibling (first (filter xml/tag? (reverse (z/lefts %))))]
+    #(when-let [sibling (first (filter p/tag? (reverse (z/lefts %))))]
        (select? sibling selector))))
 
 (defn lefts
@@ -874,14 +948,14 @@
   the specified selector-step."
  [selector-step]
   (let [selector [:> selector-step]]
-    #(select? (filter xml/tag? (z/lefts %)) selector)))
+    #(select? (filter p/tag? (z/lefts %)) selector)))
 
 (defn right
  "Selector predicate, matches nodes whose immediate right sibling element is
   matched by the specified selector-step."
  [selector-step]
   (let [selector [:> selector-step]]
-    #(when-let [sibling (first (filter xml/tag? (z/rights %)))]
+    #(when-let [sibling (first (filter p/tag? (z/rights %)))]
        (select? sibling selector))))
 
 (defn rights
@@ -889,7 +963,7 @@
   the specified selector-step."
  [selector-step]
   (let [selector [:> selector-step]]
-    #(select? (filter xml/tag? (z/rights %)) selector)))
+    #(select? (filter p/tag? (z/rights %)) selector)))
 
 (def any-node (constantly true))
 
@@ -897,7 +971,7 @@
 
 (def text-node #(string? (z/node %)))
 
-(def comment-node #(xml/comment? (z/node %)))
+(def comment-node #(p/comment? (z/node %)))
 
 ;; screen-scraping utils
 (defn text
@@ -906,7 +980,7 @@
  [node]
   (cond
     (string? node) node
-    (xml/tag? node) (apply str (map text (:content node)))
+    (p/tag? node) (apply str (map text (:content node)))
     :else ""))
 
 (defn texts

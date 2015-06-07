@@ -8,8 +8,8 @@
 ;   the terms of this license.
 ;   You must not remove this notice, or any other, from this software.
 
-(ns net.cgrand.tagsoup
-  (:require [net.cgrand.xml :as xml]))
+(ns net.cgrand.parser.tagsoup
+  (:require [net.cgrand.parser.sax :as sax]))
 
 (defn- startparse-tagsoup [s ch]
   (doto (org.ccil.cowan.tagsoup.Parser.)
@@ -24,10 +24,10 @@
     (.setProperty "http://xml.org/sax/properties/lexical-handler" ch)
     (.parse s)))
 
-(defn parser 
+(defn parser
  "Loads and parse an HTML resource and closes the stream."
- [stream]
+ [input]
   (filter map?
-    (with-open [^java.io.Closeable stream stream]
-      (xml/parse (org.xml.sax.InputSource. stream) startparse-tagsoup))))
+    (with-open [^java.io.Closeable stream (sax/to-stream input)]
+      (sax/parse (org.xml.sax.InputSource. stream) startparse-tagsoup))))
 

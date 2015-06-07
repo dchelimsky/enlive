@@ -9,8 +9,10 @@
 ;   the terms of this license.
 ;   You must not remove this notice, or any other, from this software.
 
-(ns net.cgrand.jsoup
+(ns net.cgrand.parser.jsoup
   "JSoup based parser backend."
+  (:require [net.cgrand.parser :as p]
+            [net.cgrand.resource :as r])
   (:import [org.jsoup Jsoup]
            [org.jsoup.nodes Attribute Attributes Comment DataNode Document
             DocumentType Element Node TextNode XmlDeclaration]
@@ -41,9 +43,9 @@
   (->nodes [dtd] {:type :dtd :data ((juxt :name :publicid :systemid) (->nodes (.attributes dtd)))})
 
   Element
-  (->nodes [e] {:tag (->key (.tagName e))
-                :attrs (->nodes (.attributes e))
-                :content (not-empty (map ->nodes (.childNodes e)))})
+  (->nodes [e] (p/map->Element {:tag     (->key (.tagName e))
+                                :attrs   (->nodes (.attributes e))
+                                :content (not-empty (map ->nodes (.childNodes e)))}))
 
   TextNode
   (->nodes [tn] (.getWholeText tn))
@@ -51,9 +53,39 @@
   nil
   (->nodes [_] nil))
 
+(defmulti parse
+  "Load the input using the appropriate parse signature"
+  type)
+
+(defmethod parse :default
+  [input]
+  (throw (ex-info (format "Don't know how to parse input of type %s using Jsoup" (class input))
+           {:input input})))
+
+(defmethod parse String
+  [input]
+  (Jsoup/parse input))
+
+(defmethod parse java.io.File
+  [input]
+  (Jsoup/parse input "UTF-8"))
+
+(defmethod parse java.io.InputStream
+  [input]
+  (with-open [^java.io.Closeable input]
+    (Jsoup/parse input "UTF-8")))
+
+(defmethod java.net.URL
+  [input]
+  (parse (.openStream input)))
+
+(defmethod java.net.URI
+  [input]
+  (parse (.toURL input)))
 
 (defn parser
-  "Parse a HTML document stream into Enlive nodes using JSoup."
-  [stream]
+  "Parse using jsoup"
+  [input]
+  (->nodes (parse input))
   (with-open [^java.io.Closeable stream stream]
     (->nodes (Jsoup/parse stream "UTF-8" ""))))

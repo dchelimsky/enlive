@@ -12,9 +12,11 @@
   (:require
     [clojure.zip :as zip]
     [net.cgrand.enlive-html :as e]
-    [net.cgrand.xml :as xml]
-    #?(:clj [clojure.test :refer [deftest is are]]
-       :cljs [cljs.test :refer-macros [deftest is are]])))
+    [net.cgrand.parser :as xml]
+    #?(:clj
+    [clojure.test :refer [deftest is are]]
+       :cljs [cljs.test :refer-macros [deftest is are]])
+    [net.cgrand.parser :as p]))
 
 ;; test utilities
 (defn- normalize [x]
@@ -31,7 +33,7 @@
  `(is (same? ~@forms)))
 
 (defn- test-step [expected pred node]
-  (= expected (boolean (pred (xml/xml-zip node)))))
+  (= expected (boolean (pred (p/element-zipper node)))))
 
 (defn- elt
  ([tag] (elt tag nil))
