@@ -11,8 +11,7 @@
 
 (ns net.cgrand.parser.jsoup
   "JSoup based parser backend."
-  (:require [net.cgrand.parser :as p]
-            [net.cgrand.resource :as r])
+  (:require [net.cgrand.parser :as p])
   (:import [org.jsoup Jsoup]
            [org.jsoup.nodes Attribute Attributes Comment DataNode Document
             DocumentType Element Node TextNode XmlDeclaration]
@@ -72,20 +71,18 @@
 
 (defmethod parse java.io.InputStream
   [input]
-  (with-open [^java.io.Closeable input]
+  (with-open [^java.io.Closeable input input]
     (Jsoup/parse input "UTF-8")))
 
-(defmethod java.net.URL
+(defmethod parse java.net.URL
   [input]
   (parse (.openStream input)))
 
-(defmethod java.net.URI
+(defmethod parse java.net.URI
   [input]
   (parse (.toURL input)))
 
 (defn parser
   "Parse using jsoup"
   [input]
-  (->nodes (parse input))
-  (with-open [^java.io.Closeable stream stream]
-    (->nodes (Jsoup/parse stream "UTF-8" ""))))
+  (->nodes (parse input)))
