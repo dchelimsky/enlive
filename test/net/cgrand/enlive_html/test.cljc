@@ -31,7 +31,9 @@
    (defmacro #^{:private true}
     is-same
     [& forms]
-    `('is (same? ~@forms))))
+     (if (resolve 'cljs.test/run-tests)
+       `(~'cljs.test/is (same? ~@forms))
+       `(~'clojure.test/is (same? ~@forms)))))
 
 (defn- test-step [expected pred node]
   (= expected (boolean (pred (p/element-zipper node)))))
