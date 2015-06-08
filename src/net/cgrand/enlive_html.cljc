@@ -11,23 +11,26 @@
 (ns net.cgrand.enlive-html
   "enlive-html is a selector-based transformation and extraction engine."
   (:refer-clojure :exclude [flatmap])
-  #?(:cljs (:require-macros [net.cgrand.enlive-html :refer [at]]))
+  #?(:cljs (:require-macros [net.cgrand.enlive-html :refer [at with-options]]))
   (:require [clojure.string :as str]
             [clojure.zip :as z]
             #?(:cljs [goog.string :as gstr])
             [net.cgrand.parser :as p]
             #?(:clj [net.cgrand.parser.sax :as sax])
             #?(:clj [net.cgrand.parser.tagsoup :as tagsoup]
-               :cljs [net.cgrand.parser.dom :as domparser])))
+               :cljs [net.cgrand.parser.dom :as domparser]))
+  #?(:clj (:import [java.io ByteArrayInputStream]
+                   [java.nio.charset Charset])))
 
 ;; EXAMPLES: see net.cgrand.enlive-html.examples
 
 (def ^{:dynamic true} *options* {:parser #?(:clj tagsoup/parser
                                             :cljs domparser/parser)})
 
-(defmacro with-options [m & body]
-  `(binding [*options* (merge *options* ~m)]
-     ~@body))
+#?(:clj
+   (defmacro with-options [m & body]
+     `(binding [*options* (merge *options* ~m)]
+        ~@body)))
 
 #?(:clj
    (do
@@ -54,6 +57,11 @@
           [parser]
           (alter-ns-options! assoc :parser parser))))
 
+(defn default-options
+  "Return the default options for the current NS in a cross-platform way"
+  []
+  #?(:clj (ns-options) :cljs {}))
+
 (defmulti ^{:arglists '([resource loader])} get-resource
  "Loads a resource, using the specified loader. Returns a seq of nodes."
  (fn [res _] (type res)))
@@ -63,10 +71,13 @@
   [resource loader]
   (loader resource))
 
-;; Resource registration only happens in CLJ
-#?(:clj
+;; Resource registration is a no-op in CLJS
+(defmulti register-resource! type)
+
+#?(:cljs
+   (defmethod register-resource! :default [_] nil)
+   :clj
    (do
-     (defmulti register-resource! type)
 
      (defmethod register-resource! java.io.File [^java.io.File file]
        (register-resource! (.toURL file)))
@@ -500,6 +511,7 @@
                              [(if (static-selector? s) (cacheable s) s) t])))
               `(transform ~(if (static-selector? s) (cacheable s) s) ~t))))))
 
+
 (defn zip-select-nodes* [locs state]
   (letfn [(select1 [loc previous-state]
             (when-let [state (step previous-state loc)]
@@ -595,7 +607,7 @@
      [source selector args & forms]
      (let [[options source selector args & forms]
            (pad-unless map? {} (list* source selector args forms))]
-       `(let [opts# (merge (ns-options (find-ns '~(ns-name *ns*)))
+       `(let [opts# (merge (default-options)
                       ~options)
               source# ~source]
           (register-resource! source#)
@@ -607,7 +619,7 @@
     ([source args & forms]
       (let [[options source & body]
               (pad-unless map? {} (list* source args forms))]
-        `(let [opts# (merge (ns-options (find-ns '~(ns-name *ns*)))
+        `(let [opts# (merge (default-options)
                        ~options)
                source# ~source]
            (register-resource! source#)
@@ -642,23 +654,28 @@
 
 #?(:clj
    (defmacro transform-content [& body]
-    `(let [f# (transformation ~@body)]
-       (fn [elt#]
-         (assoc elt# :content (flatmap f# (:content elt#)))))))
+     `(let [f# (transformation ~@body)]
+        (fn [elt#]
+          (assoc elt# :content (flatmap f# (:content elt#)))))))
 
 #?(:clj
-   (defn html-snippet
-    "Concatenate values as a string and then parse it with tagsoup.
-     html-snippet doesn't insert missing <html> or <body> tags."
-    [& values]
-     (-> (apply str "<bogon>" values)
-       java.io.StringReader. html-resource first :content)))
+   (defn string-input-stream
+     "Convert a string to an InputStream for efficient
+      use by all JVM parsers"
+     [^String s]
+     (ByteArrayInputStream. (.getBytes s (Charset/forName "UTF-8")))))
 
-#?(:clj
-   (defn html-content
-    "Replaces the content of the element. Values are strings containing html code."
-    [& values]
-     #(assoc % :content (apply html-snippet values))))
+(defn html-snippet
+   "Concatenate values as a string and then parse it. Html-snippet doesn't insert missing <html> or <body> tags."
+        [& values]
+  (-> (apply str "<bogon>" values)
+    #?(:clj (string-input-stream))
+     html-resource first :content))
+
+(defn html-content
+   "Replaces the content of the element. Values are strings containing html code."
+        [& values]
+   #(assoc % :content (apply html-snippet values)))
 
 (defn wrap
  ([tag] (wrap tag nil))

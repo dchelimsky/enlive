@@ -82,7 +82,7 @@
 
 (defmethod to-stream java.io.Reader
   [input]
-  ;; inefficient, but satisfies the contract
+  ;; a bit inefficient, but satisfies the contract
   (to-stream (slurp input)))
 
 (defn parse

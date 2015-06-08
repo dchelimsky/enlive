@@ -9,12 +9,12 @@
 ;   You must not remove this notice, or any other, from this software.
 
 (ns net.cgrand.enlive-html.test
+  #?(:cljs (:require-macros [net.cgrand.enlive-html.test :refer [is-same]]))
   (:require
     [clojure.zip :as zip]
     [net.cgrand.enlive-html :as e]
     [net.cgrand.parser :as xml]
-    #?(:clj
-    [clojure.test :refer [deftest is are]]
+    #?(:clj  [clojure.test :refer [deftest is are]]
        :cljs [cljs.test :refer-macros [deftest is are]])
     [net.cgrand.parser :as p]))
 
@@ -27,10 +27,11 @@
 (defn- same? [& xs]
   (apply = (map normalize xs)))
 
-(defmacro #^{:private true}
- is-same
- [& forms]
- `(is (same? ~@forms)))
+#?(:clj
+   (defmacro #^{:private true}
+    is-same
+    [& forms]
+    `('is (same? ~@forms))))
 
 (defn- test-step [expected pred node]
   (= expected (boolean (pred (p/element-zipper node)))))
