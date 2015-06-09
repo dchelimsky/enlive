@@ -665,12 +665,19 @@
      [^String s]
      (ByteArrayInputStream. (.getBytes s (Charset/forName "UTF-8")))))
 
+(declare select any-node)
+
 (defn html-snippet
    "Concatenate values as a string and then parse it. Html-snippet doesn't insert missing <html> or <body> tags."
-        [& values]
-  (-> (apply str "<bogon>" values)
-    #?(:clj (string-input-stream))
-     html-resource first :content))
+  [& values]
+  (let [s (apply str values)
+        s-or-is #?(:clj (string-input-stream s) :cljs s)
+        doc (html-resource s-or-is)]
+    (if (re-find #"(?i)<body" s)
+      (if (re-find #"(?i)<html" s)
+        doc
+        (select doc [:body]))
+      (select doc [:body :> any-node]))))
 
 (defn html-content
    "Replaces the content of the element. Values are strings containing html code."
@@ -693,8 +700,15 @@
   ([m] (replace-vars #"\$\{\s*([^}]*[^\s}])\s*}" m))
   ([re m] (replace-vars re m keyword))
   ([re m f]
-    (let [replacement (comp m f second)
-          substitute-vars #(str/replace % re replacement)]
+    (let [substitute-vars (fn [s]
+                            ; See http://dev.clojure.org/jira/browse/CLJS-1304
+                            #?(:clj
+                               (str/replace s re (comp m f second))
+                               :cljs
+                               (let [matches (re-seq re s)
+                                     match-map (into {} matches)
+                                     replace-fn #(m (f (match-map %)))]
+                                 (str/replace s re replace-fn))))]
       (fn [node]
         (cond
           (string? node) (substitute-vars node)
@@ -1029,7 +1043,7 @@
    (defmacro sniptest
      "A handy macro for experimenting at the repl"
      [source-string & forms]
-     `(sniptest* (quote ~(html-snippet source-string)) (transformation ~@forms))))
+     `(sniptest* (html-snippet ~source-string) (transformation ~@forms))))
 
 ;; hiccup-style inline fragments
 (defn- attr-map? [node-spec]
@@ -1040,7 +1054,7 @@
     (string? node-spec) node-spec
     (vector? node-spec)
       (let [[tag & [m & ms :as more]] node-spec
-            [tag-name & segments] (.split (name tag) "(?=[#.])")
+            [tag-name & segments] (str/split (name tag) #"(?=[#.])")
             id (some (fn [^String seg]
                        (when (= \# (.charAt seg 0)) (subs seg 1))) segments)
             classes (keep (fn [^String seg]
