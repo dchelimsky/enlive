@@ -342,7 +342,6 @@
   "Entry point for running tests (until *.cljc tools catch up)"
   []
   #?(:clj
-     #_(println "orig:" (e/html-snippet "<div><h1>Title1<p>blabla<hr><h2>Title2<p>blibli"))
      (clojure.test/run-tests 'net.cgrand.enlive-html.test)
      :cljs
      (cljs.test/run-tests 'net.cgrand.enlive-html.test)))

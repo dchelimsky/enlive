@@ -12,14 +12,14 @@
                     :resource-paths ["test/resources"]
                     :aliases {"test-clj" ["run" "-m" "net.cgrand.enlive-html.test"]
                               "test-cljs" ["do" ["clean"]
-                                                ["cljsbuild" "once" "whitespace"]
-                                                ["shell" "phantomjs" "target/js/test-ws.js"]]
+                                                ["cljsbuild" "once" "advanced"]
+                                                ["shell" "phantomjs" "target/js/test-advanced.js"]]
                               "test-all" ["do" ["test-clj"]
-                                               ["test-cljs"]]
-                              }
+                                               ["test-cljs"]]}
                     :cljsbuild {:builds {:whitespace {:source-paths ["src" "test"]
                                                       :compiler {:output-to "target/js/test-ws.js"
                                                                  :optimizations :whitespace}}
                                          :advanced {:source-paths ["src" "test"]
                                                     :compiler {:output-to "target/js/test-advanced.js"
+                                                               :externs ["resources/phantomjs-externs.js"]
                                                                :optimizations :advanced}}}}}})
