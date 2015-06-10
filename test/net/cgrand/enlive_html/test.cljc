@@ -9,13 +9,16 @@
 ;   You must not remove this notice, or any other, from this software.
 
 (ns net.cgrand.enlive-html.test
-  #?(:cljs (:require-macros [net.cgrand.enlive-html.test :refer [is-same]]))
+  #?(:cljs (:require-macros [net.cgrand.enlive-html.test :refer [is-same deftemplate-inline]]))
   (:require
     [clojure.zip :as zip]
     [net.cgrand.enlive-html :as e]
     [net.cgrand.parser :as xml]
     [clojure.string :as str]
-    #?(:clj  [clojure.test :refer [deftest is are]]
+    #?(:clj
+    [clojure.java.io :as io])
+    #?(:clj
+    [clojure.test :refer [deftest is are]]
        :cljs [cljs.test :refer-macros [deftest is are]])
     [net.cgrand.parser :as p]))
 
@@ -30,8 +33,8 @@
 
 #?(:clj
    (defmacro #^{:private true}
-    is-same
-    [& forms]
+   is-same
+     [& forms]
      (if (resolve 'cljs.test/run-tests)
        `(~'cljs.test/is (same? ~@forms))
        `(~'clojure.test/is (same? ~@forms)))))
@@ -273,15 +276,24 @@
     (e/sniptest "<div><div><div>"
       [:> :div] (e/transform-content [:> :div] (e/add-class "bar")))))
 
-;
-;(e/deftemplate case-insensitive-doctype-template "resources/templates/doctype_case.html"
-;  [])
-;
-;(deftest case-insensitive-doctype-test
-;  (is (.startsWith (apply str (case-insensitive-doctype-template)) "<!DOCTYPE")))
-;
-;(deftest templates-return-seqs
-;  (is (seq? (case-insensitive-doctype-template))))
+#?(:clj
+   (defmacro deftemplate-inline
+     "Wrapper for deftemplate that slurps the resource into a string form at macro-expansion time"
+     [name resource & args]
+     `(e/deftemplate ~name ~(if (resolve 'cljs.test/run-tests)
+                              (slurp (io/resource resource))
+                              resource)
+        ~@args)))
+
+(deftemplate-inline case-insensitive-doctype-template
+  "resources/templates/doctype_case.html"
+  [])
+
+(deftest case-insensitive-doctype-test
+  (is (zero? (.indexOf (apply str (case-insensitive-doctype-template)) "<!DOCTYPE"))))
+
+(deftest templates-return-seqs
+  (is (seq? (case-insensitive-doctype-template))))
 
 (deftest hiccup-like
   (is-same "<div><b>world"

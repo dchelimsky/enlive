@@ -13,7 +13,10 @@
                     :aliases {"test-clj" ["run" "-m" "net.cgrand.enlive-html.test"]
                               "test-cljs" ["do" ["clean"]
                                                 ["cljsbuild" "once" "whitespace"]
-                                                ["shell" "phantomjs" "target/js/test-ws.js"]]}
+                                                ["shell" "phantomjs" "target/js/test-ws.js"]]
+                              "test-all" ["do" ["test-clj"]
+                                               ["test-cljs"]]
+                              }
                     :cljsbuild {:builds {:whitespace {:source-paths ["src" "test"]
                                                       :compiler {:output-to "target/js/test-ws.js"
                                                                  :optimizations :whitespace}}

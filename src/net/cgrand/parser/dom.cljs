@@ -45,7 +45,7 @@
 (extend-protocol IEnlive
   js/Document
   (->nodes [d]
-    (->nodes (.-documentElement d)))
+    (not-empty (filter identity (map ->nodes (.-childNodes d)))))
 
   js/Element
   (->nodes [e]
@@ -68,9 +68,7 @@
 
   js/DocumentType
   (->nodes [dtd]
-    ;  {:type :dtd :data (not-empty (map ->nodes (.-attributes dtd)))}
-    nil
-    )
+    {:type :dtd :data (not-empty (map ->nodes (.-attributes dtd)))})
 
   js/Text
   (->nodes [tn] (.-wholeText tn))
