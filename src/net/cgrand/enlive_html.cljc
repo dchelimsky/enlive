@@ -670,14 +670,17 @@
 (defn html-snippet
    "Concatenate values as a string and then parse it. Html-snippet doesn't insert missing <html> or <body> tags."
   [& values]
-  (let [s (apply str values)
+  (let [s (str/trim (apply str values))
         s-or-is #?(:clj (string-input-stream s) :cljs s)
         doc (html-resource s-or-is)]
-    (if (re-find #"(?i)<body" s)
-      (if (re-find #"(?i)<html" s)
-        doc
-        (select doc [:body]))
-      (select doc [:body :> any-node]))))
+    (if (p/is-xml? s)
+      doc
+      ;; Eliminate body and HTML tags conditionally depending on whether the input had them
+      (if (re-find #"(?i)<body" s)
+            (if (re-find #"(?i)<html" s)
+              doc
+              (select doc [:body]))
+            (select doc [:body :> any-node])))))
 
 (defn html-content
    "Replaces the content of the element. Values are strings containing html code."

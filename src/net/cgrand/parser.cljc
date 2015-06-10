@@ -43,3 +43,8 @@
       (when (-> l z/node string?)
         (-> l (z/edit str s) z/up)))
     (-> loc (z/append-child s))))
+
+(defn is-xml?
+  "Return true if the input string seems to be an XML document"
+  [s]
+  (re-find #"(?i)<\?xml" s))

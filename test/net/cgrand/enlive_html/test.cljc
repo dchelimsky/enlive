@@ -198,6 +198,7 @@
   [:feed :id] (e/content "1")
   [:feed :subtitle] (e/content "1")
   [:feed :updated] (e/content "1")
+  [[:* (e/attr? :xmlns)]] (e/remove-attr :xmlns)
   [:entry] (e/clone-for [x ["one" "two"]]
                       [:published] (e/content "1")
                       [:updated] nil
@@ -325,8 +326,6 @@
 
 #?(:cljs (enable-console-print!))
 
-;;TODO: remaining issues: same? is failing
-
 (defn -main
   "Entry point for running tests (until *.cljc tools catch up)"
   []
@@ -334,15 +333,7 @@
      #_(println "orig:" (e/html-snippet "<div><h1>Title1<p>blabla<hr><h2>Title2<p>blibli"))
      (clojure.test/run-tests 'net.cgrand.enlive-html.test)
      :cljs
-
-     (cljs.test/run-tests 'net.cgrand.enlive-html.test)
-
-
-
-
-
-
-     ))
+     (cljs.test/run-tests 'net.cgrand.enlive-html.test)))
 
 ;; Run tests at the root level, in CLJS
 #?(:cljs
