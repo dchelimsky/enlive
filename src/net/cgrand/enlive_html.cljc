@@ -217,7 +217,7 @@
 ;; utilities
 
 (defn- node? [x]
-  (or (string? x) (map? x)))
+  (and x (or (map? x) (not (coll? x)))))
 
 (defn as-nodes [node-or-nodes]
   (if (node? node-or-nodes)

@@ -335,6 +335,13 @@
   (is (= ((e/replace-words {"Donald" "Mickey" "Duck" "Mouse"}) "Donald Duckling Duck")
         "Mickey Duckling Mouse")))
 
+(deftype MyType [])
+(deftest arbitrary-node-types-test
+    (let [v (->MyType)
+          nodes (e/at (e/html-snippet "<div>foo</div>")
+                  [:div] (e/content v))]
+      (is (= v (first (e/select nodes [:div :> e/any-node]))))))
+
 
 #?(:cljs (enable-console-print!))
 
