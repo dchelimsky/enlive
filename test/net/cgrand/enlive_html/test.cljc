@@ -19,7 +19,7 @@
     [clojure.java.io :as io])
     #?(:clj
     [clojure.test :refer [deftest is are]]
-       :cljs [cljs.test :refer-macros [deftest is are]])
+       :cljs [cljs.test :refer-macros [deftest is are run-all-tests]])
     [net.cgrand.parser :as p]))
 
 ;; test utilities

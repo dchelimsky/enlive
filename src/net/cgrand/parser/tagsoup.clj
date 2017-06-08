@@ -26,8 +26,10 @@
 
 (defn parser
  "Loads and parse an HTML resource and closes the stream."
- [input]
+  [stream]
+  (when-not stream 
+    (throw (NullPointerException. "HTML resource not found.")))
   (filter map?
-    (with-open [^java.io.Closeable stream (sax/to-stream input)]
+    (with-open [^java.io.Closeable stream stream]
       (sax/parse (org.xml.sax.InputSource. stream) startparse-tagsoup))))
 
