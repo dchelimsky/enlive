@@ -3,7 +3,7 @@
 
   Most actual functionality has been moved into the
   net.cgrand.parser NS."
-  (require [net.cgrand.parser :as p]
+  (:require [net.cgrand.parser :as p]
            [net.cgrand.parser.sax :as sax]))
 
 (def tag p/tag)
